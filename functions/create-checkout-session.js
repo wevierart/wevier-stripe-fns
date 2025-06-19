@@ -1,24 +1,20 @@
 // functions/create-checkout-session.js
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
-// allow your Webflow domain (or use "*" during dev)
+// during dev you can use "*" but in prod lock it to your Webflow domain
 const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "https://www.wevierart.com",
+  "Access-Control-Allow-Origin":  "https://www.wevierart.com",
   "Access-Control-Allow-Methods": "OPTIONS, POST",
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
 exports.handler = async (event) => {
-  // 1) CORS preflight
+  // 1) preflight
   if (event.httpMethod === "OPTIONS") {
-    return {
-      statusCode: 204,
-      headers: CORS_HEADERS,
-      body: "",
-    };
+    return { statusCode: 204, headers: CORS_HEADERS, body: "" };
   }
 
-  // 2) Only allow POST
+  // 2) only POSTs allowed
   if (event.httpMethod !== "POST") {
     return {
       statusCode: 405,
@@ -27,21 +23,18 @@ exports.handler = async (event) => {
     };
   }
 
-  let body;
+  // 3) parse JSON
+  let data;
   try {
-    body = JSON.parse(event.body);
+    data = JSON.parse(event.body);
   } catch (err) {
-    return {
-      statusCode: 400,
-      headers: CORS_HEADERS,
-      body: "Invalid JSON",
-    };
+    return { statusCode: 400, headers: CORS_HEADERS, body: "Invalid JSON" };
   }
 
-  const { items, shipping, currency, email } = body;
+  const { email, shipping, currency, items } = data;
 
   try {
-    // (a) create a Stripe customer with shipping
+    // a) create the customer (with shipping)
     const customer = await stripe.customers.create({
       email,
       shipping: {
@@ -57,21 +50,21 @@ exports.handler = async (event) => {
       },
     });
 
-    // (b) build your line items
-    const line_items = items.map((i) => ({
+    // b) build the line_items
+    const line_items = items.map((it) => ({
       price_data: {
         currency,
-        unit_amount: i.price,            // already in cents from your front-end
+        unit_amount: it.price,  // already in cents on your front‐end
         product_data: {
-          name:        i.name,
-          description: i.description,
-          images:      [ i.image ],
+          name:        it.name,
+          description: it.description,
+          images:      [ it.image ],
         },
       },
-      quantity: i.quantity,
+      quantity: it.quantity,
     }));
 
-    // (c) create the Checkout Session
+    // c) create the Checkout Session
     const session = await stripe.checkout.sessions.create({
       customer:            customer.id,
       payment_method_types:["card"],
