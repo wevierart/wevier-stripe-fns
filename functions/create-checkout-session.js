@@ -1,65 +1,47 @@
-// functions/create-checkout-session.js
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-
-const CORS = {
-  "Access-Control-Allow-Origin":  "https://www.wevierart.com",
-  "Access-Control-Allow-Methods": "OPTIONS, POST",
-  "Access-Control-Allow-Headers": "Content-Type"
-};
+// netlify/functions/create-checkout-session.js
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 exports.handler = async (event) => {
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers: CORS, body: "" };
-  }
-  if (event.httpMethod !== "POST") {
-    return { statusCode: 405, headers: CORS, body: "Method Not Allowed" };
-  }
+  const { items, shipping, currency, email } = JSON.parse(event.body);
 
-  let data;
-  try {
-    data = JSON.parse(event.body);
-  } catch {
-    return { statusCode: 400, headers: CORS, body: "Invalid JSON" };
-  }
+  // 1) Create a Stripe Customer with the shipping you collected
+  const customer = await stripe.customers.create({
+    email,
+    shipping: {
+      name: shipping.name,
+      address: {
+        line1:       shipping.address,
+        line2:       shipping.address2,
+        city:        shipping.city,
+        state:       shipping.state,
+        postal_code: shipping.zip,
+        country:     shipping.country,
+      }
+    }
+  });
 
-  // Build Stripe line items
-  const line_items = data.items.map(i => ({
-    price_data: {
-      currency: data.currency,
-      product_data: {
-        name:        i.name,
-        description: `${i.material} | ${i.size} | ${i.frame}`,
-        images:      [ i.image ]
+  // 2) Create the Checkout Session, pointing at that customer
+  const session = await stripe.checkout.sessions.create({
+    customer: customer.id,               // ← here!
+    payment_method_types: ["card"],
+    mode:              "payment",
+    line_items: items.map(i => ({
+      price_data: {
+        currency,
+        unit_amount: i.price,
+        product_data: {
+          name:   i.name,
+          images: [ i.image ]            // ← here!
+        }
       },
-      unit_amount: i.price
-    },
-    quantity: i.quantity
-  }));
+      quantity: i.quantity
+    })),
+    success_url: `https://your-site.com/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url:  `https://your-site.com/canceled`
+  });
 
-  try {
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      customer_email: data.email,
-      line_items,
-      mode: 'payment',
-      shipping_address_collection: {
-        allowed_countries: ['US','GB','DE','FR','IT','ES','AU','CA']
-      },
-      success_url: `https://www.wevierart.com/checkout-success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url:  `https://www.wevierart.com/checkout-cancelled`
-    });
-
-    return {
-      statusCode: 200,
-      headers: CORS,
-      body: JSON.stringify({ sessionId: session.id })
-    };
-  } catch (err) {
-    console.error(err);
-    return {
-      statusCode: 500,
-      headers: CORS,
-      body: JSON.stringify({ error: err.message })
-    };
-  }
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ sessionId: session.id })
+  };
 };
