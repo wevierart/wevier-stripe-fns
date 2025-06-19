@@ -1,14 +1,10 @@
-# netlify.toml
-
 [build]
-  # point this at your functions folder
+  # no real front-end to build, so publish can stay default
   functions = "functions"
 
 [[headers]]
-  # apply these headers to every function endpoint
   for = "/.netlify/functions/*"
   [headers.values]
-    # allow your front-end origin to talk to any function
     Access-Control-Allow-Origin  = "https://www.wevierart.com"
     Access-Control-Allow-Methods = "POST, OPTIONS"
     Access-Control-Allow-Headers = "Content-Type"
