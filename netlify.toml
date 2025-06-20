@@ -1,10 +1,6 @@
-[build]
-  # no real front-end to build, so publish can stay default
-  functions = "functions"
-
 [[headers]]
   for = "/.netlify/functions/*"
   [headers.values]
-    Access-Control-Allow-Origin  = "https://www.wevierart.com"
+    Access-Control-Allow-Origin = "https://www.wevierart.com"
     Access-Control-Allow-Methods = "POST, OPTIONS"
     Access-Control-Allow-Headers = "Content-Type"
