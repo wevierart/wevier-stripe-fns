@@ -1,63 +1,76 @@
-// netlify/functions/create-checkout-session.js
-require('dotenv').config();
-const Stripe = require('stripe');
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+// functions/create-checkout-session.js
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
-exports.handler = async (event, context) => {
-  // 1) Handle the CORS preflight (OPTIONS) request
-  if (event.httpMethod === 'OPTIONS') {
+// Universal CORS headers
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "https://www.wevierart.com",            // or lock it down to "https://www.wevierart.com"
+  "Access-Control-Allow-Methods": "OPTIONS, POST",
+  "Access-Control-Allow-Headers": "Content-Type"
+};
+
+exports.handler = async (event) => {
+  // 1) Handle the browser’s CORS preflight request
+  if (event.httpMethod === "OPTIONS") {
     return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': 'https://www.wevierart.com',         // or use '*'
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-      body: ''
+      statusCode: 204,
+      headers: CORS_HEADERS,
+      body: ""            // no payload on preflight
     };
   }
 
-  // 2) Always include CORS on your real POST responses
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': 'https://www.wevierart.com',           // or '*'
-  };
+  // 2) Reject anything other than POST
+  if (event.httpMethod !== "POST") {
+    return {
+      statusCode: 405,
+      headers: CORS_HEADERS,
+      body: "Method Not Allowed"
+    };
+  }
 
-  // 3) Parse and validate your incoming JSON
-  let body;
+  // 3) Parse the JSON body
+  let data;
   try {
-    body = JSON.parse(event.body);
+    data = JSON.parse(event.body);
   } catch (err) {
     return {
       statusCode: 400,
-      headers: corsHeaders,
-      body: JSON.stringify({ error: 'Invalid JSON' }),
+      headers: CORS_HEADERS,
+      body: "Invalid JSON"
     };
   }
 
-  const { email, items } = body;
+  const { email, shipping, items } = data;
 
   try {
-    // 4) Create the Stripe session
+    // 4) Create Stripe session
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      customer_email:      email,
-      line_items:          items,
-      mode:                'payment',
-      success_url:         'https://www.wevierart.com/success?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url:          'https://www.wevierart.com/custom-checkout',
+      payment_method_types: ["card"],
+      customer_email: email,
+      shipping_address_collection: { allowed_countries: ["US","GB","CA"] },
+      line_items: items.map(i => ({
+        price_data: {
+          currency: "usd",
+          product_data: { name: i.name },
+          unit_amount: i.price,
+        },
+        quantity: i.quantity,
+      })),
+      mode: "payment",
+      success_url: "https://www.wevierart.com/success",
+      cancel_url:  "https://www.wevierart.com/cancel",
     });
 
+    // 5) Return the session ID with CORS headers
     return {
       statusCode: 200,
-      headers: corsHeaders,
+      headers: CORS_HEADERS,
       body: JSON.stringify({ sessionId: session.id }),
     };
-
   } catch (err) {
     return {
       statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({ error: err.message }),
+      headers: CORS_HEADERS,
+      body: err.message,
     };
   }
 };
