@@ -1,28 +1,35 @@
+// netlify/functions/create-checkout-session.js
 require('dotenv').config();
 const Stripe = require('stripe');
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 exports.handler = async (event, context) => {
-  // 1) Handle the CORS preflight request
+  // 1) Handle the CORS preflight (OPTIONS) request
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
       headers: {
-        'Access-Control-Allow-Origin': 'https://www.wevierart.com',      // your Webflow domain
-        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Origin': 'https://www.wevierart.com',         // or use '*'
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      }
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
+      body: ''
     };
   }
 
-  // 2) Parse body
+  // 2) Always include CORS on your real POST responses
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': 'https://www.wevierart.com',           // or '*'
+  };
+
+  // 3) Parse and validate your incoming JSON
   let body;
   try {
     body = JSON.parse(event.body);
   } catch (err) {
     return {
       statusCode: 400,
-      headers: { 'Access-Control-Allow-Origin': 'https://www.wevierart.com' },
+      headers: corsHeaders,
       body: JSON.stringify({ error: 'Invalid JSON' }),
     };
   }
@@ -30,7 +37,7 @@ exports.handler = async (event, context) => {
   const { email, items } = body;
 
   try {
-    // 3) Create the Stripe Checkout Session
+    // 4) Create the Stripe session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       customer_email:      email,
@@ -42,14 +49,14 @@ exports.handler = async (event, context) => {
 
     return {
       statusCode: 200,
-      headers: { 'Access-Control-Allow-Origin': 'https://www.wevierart.com' },
+      headers: corsHeaders,
       body: JSON.stringify({ sessionId: session.id }),
     };
 
   } catch (err) {
     return {
       statusCode: 500,
-      headers: { 'Access-Control-Allow-Origin': 'https://www.wevierart.com' },
+      headers: corsHeaders,
       body: JSON.stringify({ error: err.message }),
     };
   }
