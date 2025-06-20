@@ -41,6 +41,7 @@ exports.handler = async (event) => {
     // 4) Build your line items using the same field names you send from the front-end:
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
+      billing_address_collection: "required",
       customer_email: email,
       line_items: items.map((i) => ({
         price_data: {
