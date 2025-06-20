@@ -64,10 +64,11 @@ exports.handler = async (event) => {
       body: JSON.stringify({ sessionId: session.id }),
     };
   } catch (err) {
+    console.error("🔴 Stripe Error:", err);
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
-      body: err.message,
+      body: JSON.stringify({ error: err.message }),  // ← JSON‐wrapped
     };
   }
 };
