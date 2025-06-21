@@ -1,16 +1,20 @@
-// functions/create-checkout-session.js
+// netlify/functions/create-checkout-session.js
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
+// enable CORS for your Webflow domain
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "https://www.wevierart.com",
   "Access-Control-Allow-Methods": "OPTIONS, POST",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type"
 };
 
 exports.handler = async (event) => {
+  // 1) Preflight
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 204, headers: CORS_HEADERS, body: "" };
   }
+
+  // 2) Only POST
   if (event.httpMethod !== "POST") {
     return {
       statusCode: 405,
@@ -23,7 +27,11 @@ exports.handler = async (event) => {
   try {
     data = JSON.parse(event.body);
   } catch {
-    return { statusCode: 400, headers: CORS_HEADERS, body: "Invalid JSON" };
+    return {
+      statusCode: 400,
+      headers: CORS_HEADERS,
+      body: "Invalid JSON",
+    };
   }
 
   const { email, items, currency = "eur" } = data;
@@ -37,28 +45,26 @@ exports.handler = async (event) => {
 
   try {
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
+      payment_method_types: ["card", "link", "ideal"],           // enable Link & iDEAL
       customer_email: email,
       shipping_address_collection: {
         allowed_countries: [
-          "GB","US","CH","NZ","AU","CA","NO","IM",
-          "AT","BE","BG","HR","CY","CZ","DK","EE",
-          "FI","FR","DE","GR","HU","IE","IT","LV",
-          "LT","LU","MT","NL","PL","PT","RO","SK",
-          "SI","ES","SE"
-        ],
+          "GB","US","CH","NZ","AU","NO","IM","AT","BE","BG","HR","CY","CZ",
+          "DK","EE","FI","FR","DE","GR","HU","IE","IT","LV","LT","LU","MT",
+          "NL","PL","PT","RO","SK","SI","ES","SE"
+        ]
       },
       line_items: items.map(i => ({
         price_data: {
           currency: currency.toLowerCase(),
           product_data: { name: i.name },
-          unit_amount: i.unit_amount,      // ← use it directly
+          unit_amount: Math.round(i.unit_amount),              // must be integer
         },
         quantity: i.quantity,
       })),
       mode: "payment",
       success_url: `https://www.wevierart.com/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: "https://www.wevierart.com/cancel",
+      cancel_url:  `https://www.wevierart.com/cancel`,
     });
 
     return {
@@ -67,7 +73,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({ sessionId: session.id }),
     };
   } catch (err) {
-    console.error("Stripe error:", err);
+    console.error(err);
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
