@@ -45,7 +45,7 @@ exports.handler = async (event) => {
 
   try {
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card", "link", "ideal"],           // enable Link & iDEAL
+      payment_method_types: ["card", "link",],           // enable Link & iDEAL
       customer_email: email,
       shipping_address_collection: {
         allowed_countries: [
