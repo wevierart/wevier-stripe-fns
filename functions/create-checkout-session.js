@@ -44,20 +44,24 @@ exports.handler = async (event) => {
   }
 
   try {
-    // 3) Build Stripe line_items, validating integer cents & quantity
+    // 3) Build Stripe line_items, now including description & images
     const line_items = items.map((i) => {
-      const ua = Number(i.unit_amount);
+      const ua  = Number(i.unit_amount);
       const qty = parseInt(i.quantity, 10);
       if (!Number.isInteger(ua) || ua <= 0) {
-        throw new Error(`Invalid unit_amount for item “${i.name}”: ${i.unit_amount}`);
+        throw new Error(`Invalid unit_amount for “${i.name}”: ${i.unit_amount}`);
       }
       if (!Number.isInteger(qty) || qty <= 0) {
-        throw new Error(`Invalid quantity for item “${i.name}”: ${i.quantity}`);
+        throw new Error(`Invalid quantity for “${i.name}”: ${i.quantity}`);
       }
       return {
         price_data: {
           currency: 'eur',
-          product_data: { name: i.name },
+          product_data: {
+            name:        i.name,
+            description: i.description || '',      // ← pass your item description
+            images:      i.image ? [i.image] : [] // ← optional thumbnail URL
+          },
           unit_amount: ua,
         },
         quantity: qty,
@@ -66,8 +70,8 @@ exports.handler = async (event) => {
 
     // 4) Create the Checkout Session
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'], // any other methods you’ve turned on in your Dashboard
-      customer_email: email,
+      payment_method_types: ['card'],
+      customer_email:       email,
       shipping_address_collection: {
         allowed_countries: [
           'GB','US','CH','NZ','AU','CA','NO','IM',
@@ -78,7 +82,7 @@ exports.handler = async (event) => {
         ]
       },
       line_items,
-      mode: 'payment',
+      mode:        'payment',
       success_url: 'https://www.wevierart.com/success?session_id={CHECKOUT_SESSION_ID}',
       cancel_url:  'https://www.wevierart.com/cancel',
     });

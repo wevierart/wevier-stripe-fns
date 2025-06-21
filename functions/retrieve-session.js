@@ -1,35 +1,52 @@
 // functions/retrieve-session.js
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
+const CORS = {
+  'Access-Control-Allow-Origin': 'https://www.wevierart.com', 
+  'Access-Control-Allow-Methods': 'OPTIONS, GET',
+  'Access-Control-Allow-Headers': 'Content-Type'
+};
+
 exports.handler = async (event) => {
-  // Only allow POST
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: 'Method Not Allowed' };
+  // CORS preflight
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers: CORS };
   }
 
-  let body;
+  if (event.httpMethod !== 'GET') {
+    return {
+      statusCode: 405,
+      headers: CORS,
+      body: 'Method Not Allowed'
+    };
+  }
+
+  const { session_id } = event.queryStringParameters || {};
+
+  if (!session_id) {
+    return {
+      statusCode: 400,
+      headers: CORS,
+      body: 'Missing session_id'
+    };
+  }
+
   try {
-    body = JSON.parse(event.body);
-  } catch {
-    return { statusCode: 400, body: 'Invalid JSON' };
-  }
+    // expand line_items so we get product name, amount, qty
+    const session = await stripe.checkout.sessions.retrieve(session_id, {
+      expand: ['line_items.data.price.product']
+    });
 
-  const { sessionId } = body;
-  if (!sessionId) {
-    return { statusCode: 400, body: 'Missing sessionId' };
-  }
-
-  try {
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
     return {
       statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(session),
+      headers: CORS,
+      body: JSON.stringify(session)
     };
   } catch (err) {
     return {
       statusCode: 500,
-      body: err.message || 'Internal Server Error',
+      headers: CORS,
+      body: err.message
     };
   }
 };
