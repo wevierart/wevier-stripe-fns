@@ -1,62 +1,46 @@
 // functions/create-paypal-order.js
+const checkoutNodeJssdk = require('@paypal/checkout-server-sdk');
 
-const CLIENT_ID     = process.env.PAYPAL_CLIENT_ID;
-const CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
-
-// 1) fetch an OAuth token from PayPal
-async function getAccessToken() {
-  const auth = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
-  const res  = await fetch('https://api-m.sandbox.paypal.com/v1/oauth2/token', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${auth}`,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: 'grant_type=client_credentials'
-  });
-  const json = await res.json();
-  return json.access_token;
-}
+// 1) configure environment
+const env = new checkoutNodeJssdk.core.SandboxEnvironment(
+  process.env.PAYPAL_CLIENT_ID,
+  process.env.PAYPAL_SECRET
+);
+const client = new checkoutNodeJssdk.core.PayPalHttpClient(env);
 
 exports.handler = async (event) => {
+  // allow only POST
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
-  let { amount, currency = 'EUR' } = JSON.parse(event.body);
-  if (typeof amount !== 'number' || amount <= 0) {
-    return { statusCode: 400, body: 'Invalid amount' };
+  let { amount } = JSON.parse(event.body);
+  if (!amount) {
+    return { statusCode: 400, body: 'Missing amount' };
   }
 
-  try {
-    const token = await getAccessToken();
-
-    // 2) create the PayPal order
-    const orderRes = await fetch(
-      'https://api-m.sandbox.paypal.com/v2/checkout/orders',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          intent: 'CAPTURE',
-          purchase_units: [{
-            amount: { currency_code: currency, value: amount.toFixed(2) }
-          }]
-        })
+  // 2) build the order request
+  const request = new checkoutNodeJssdk.orders.OrdersCreateRequest();
+  request.prefer('return=representation');
+  request.requestBody({
+    intent: 'CAPTURE',
+    purchase_units: [{
+      amount: {
+        currency_code: 'EUR',
+        value: amount.toString()
       }
-    );
-    const order = await orderRes.json();
+    }]
+  });
 
-    // 3) hand the order ID back to the client
+  try {
+    // 3) call PayPal
+    const response = await client.execute(request);
     return {
       statusCode: 200,
-      body: JSON.stringify({ orderID: order.id }),
+      body: JSON.stringify({ orderID: response.result.id })
     };
   } catch (err) {
     console.error(err);
-    return { statusCode: 500, body: 'Server error' };
+    return { statusCode: 500, body: err.toString() };
   }
 };
