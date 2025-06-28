@@ -1,24 +1,25 @@
 // functions/create-paypal-order.js
-const paypal = require('@paypal/paypal-server-sdk');
-const env = process.env;  // PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET set in Netlify UI
+const payPal = require('@paypal/paypal-server-sdk');
+const env   = process.env;  // Set PAYPAL_CLIENT_ID & SECRET in Netlify UI
 
-// set up PayPal client
 function client() {
-  const envObj = new payPal.core.SandboxEnvironment(env.PAYPAL_CLIENT_ID, env.PAYPAL_CLIENT_SECRET);
+  const envObj = new payPal.core.SandboxEnvironment(
+    env.PAYPAL_CLIENT_ID,
+    env.PAYPAL_CLIENT_SECRET
+  );
   return new payPal.core.PayPalHttpClient(envObj);
 }
 
 exports.handler = async (event) => {
-  const { items, email } = JSON.parse(event.body);
+  const { items, email, subtotal } = JSON.parse(event.body);
 
-  // build order request
   const request = new payPal.orders.OrdersCreateRequest();
   request.requestBody({
     intent: 'CAPTURE',
     purchase_units: [{
       amount: {
         currency_code: 'EUR',
-        value: items.reduce((sum,i) => sum + i.unit_amount/100 * i.quantity, 0).toFixed(2),
+        value: subtotal.toFixed(2)
       }
     }],
     application_context: {
