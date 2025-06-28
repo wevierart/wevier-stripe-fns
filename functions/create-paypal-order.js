@@ -1,5 +1,5 @@
 // functions/create-paypal-order.js
-const payPal = require('@paypal/checkout-server-sdk');
+const paypal = require('@paypal/paypal-server-sdk');
 const env = process.env;  // PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET set in Netlify UI
 
 // set up PayPal client

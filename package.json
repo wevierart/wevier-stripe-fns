@@ -8,8 +8,17 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
+    "@paypal/paypal-server-sdk": "^1.1.0",
     "stripe": "^18.2.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wevierart/wevier-stripe-fns.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wevierart/wevier-stripe-fns/issues"
+  },
+  "homepage": "https://github.com/wevierart/wevier-stripe-fns#readme",
+  "description": ""
 }
