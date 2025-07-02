@@ -11,6 +11,7 @@
   "dependencies": {
     "@paypal/checkout-server-sdk": "^1.0.3",
     "@paypal/paypal-server-sdk": "^1.1.0",
+    "node-fetch": "^2.7.0",
     "stripe": "^18.2.1"
   },
   "repository": {
