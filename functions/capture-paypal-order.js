@@ -1,27 +1,48 @@
-// netlify/functions/capture-paypal-order.js
-const paypal = require('@paypal/checkout-server-sdk');
-// … same CORS/OPTIONS boilerplate …
-exports.handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') { /* … */ }
-  if (event.httpMethod !== 'POST') return { statusCode: 405 }
+const fetch = require('node-fetch');
 
-  try {
-    const { orderID } = JSON.parse(event.body)
-    const request = new paypal.orders.OrdersCaptureRequest(orderID)
-    request.requestBody({})
-    const capture = await paypalClient.execute(request)
+exports.handler = async function(event) {
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, body: "Method Not Allowed" };
+  }
 
+  const { orderID } = JSON.parse(event.body);
+
+  const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
+  const PAYPAL_SECRET = process.env.PAYPAL_SECRET;
+
+  // Get access token
+  const basicAuth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_SECRET}`).toString('base64');
+  const tokenResponse = await fetch("https://api-m.sandbox.paypal.com/v1/oauth2/token", {
+    method: "POST",
+    headers: {
+      "Authorization": `Basic ${basicAuth}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: "grant_type=client_credentials"
+  });
+  const tokenData = await tokenResponse.json();
+  const accessToken = tokenData.access_token;
+
+  // Capture order
+  const captureRes = await fetch(`https://api-m.sandbox.paypal.com/v2/checkout/orders/${orderID}/capture`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`,
+    }
+  });
+
+  const captureData = await captureRes.json();
+
+  if (captureData.status === "COMPLETED") {
     return {
       statusCode: 200,
-      headers: { 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify(capture.result)
-    }
-  } catch (err) {
-    console.error(err)
+      body: JSON.stringify({ status: "COMPLETED", details: captureData })
+    };
+  } else {
     return {
       statusCode: 500,
-      headers: { 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({ error: err.message })
-    }
+      body: JSON.stringify(captureData)
+    };
   }
-}
+};

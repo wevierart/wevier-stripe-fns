@@ -1,74 +1,61 @@
-const payPal = require('@paypal/paypal-server-sdk');
-const env   = process.env; // set PAYPAL_CLIENT_ID & PAYPAL_CLIENT_SECRET in Netlify UI
+const fetch = require('node-fetch');
 
-// helper to make a PayPal client
-function client() {
-  const envObj = new payPal.core.SandboxEnvironment(
-    env.PAYPAL_CLIENT_ID,
-    env.PAYPAL_CLIENT_SECRET
-  );
-  return new payPal.core.PayPalHttpClient(envObj);
-}
-
-exports.handler = async (event) => {
-  // ───────────────────────────────────────────
-  // 1) Handle CORS pre-flight
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin'  : '*',
-        'Access-Control-Allow-Methods' : 'POST, OPTIONS',
-        'Access-Control-Allow-Headers' : 'Content-Type'
-      },
-      body: ''
-    };
+exports.handler = async function(event) {
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, body: "Method Not Allowed" };
   }
 
-  // 2) Only allow POST from here on
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: 'Method Not Allowed' };
-  }
+  const { amount, currency, description } = JSON.parse(event.body);
 
-  // 3) Parse input
-  let items, email, subtotal;
-  try {
-    ({ items, email, subtotal } = JSON.parse(event.body));
-  } catch (err) {
-    return { statusCode: 400, body: 'Invalid JSON' };
-  }
+  // These should be securely stored in Netlify environment variables!
+  const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
+  const PAYPAL_SECRET = process.env.PAYPAL_SECRET;
 
-  // 4) Build PayPal order
-  const request = new payPal.orders.OrdersCreateRequest();
-  request.requestBody({
-    intent: 'CAPTURE',
-    purchase_units: [{
-      amount: {
-        currency_code: 'EUR',
-        value        : subtotal.toFixed(2)
-      }
-    }],
-    application_context: {
-      user_action : 'PAY_NOW',
-      return_url  : 'https://wevierart.com/success',
-      cancel_url  : 'https://wevierart.com/cancel'
-    }
+  // Get access token from PayPal
+  const basicAuth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_SECRET}`).toString('base64');
+  const tokenResponse = await fetch("https://api-m.sandbox.paypal.com/v1/oauth2/token", {
+    method: "POST",
+    headers: {
+      "Authorization": `Basic ${basicAuth}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: "grant_type=client_credentials"
+  });
+  const tokenData = await tokenResponse.json();
+  const accessToken = tokenData.access_token;
+
+  // Create order
+  const orderRes = await fetch("https://api-m.sandbox.paypal.com/v2/checkout/orders", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      intent: "CAPTURE",
+      purchase_units: [
+        {
+          amount: {
+            currency_code: currency,
+            value: amount.toString()
+          },
+          description: description
+        }
+      ]
+    })
   });
 
-  // 5) Execute
-  try {
-    const response = await client().execute(request);
+  const orderData = await orderRes.json();
+
+  if (orderData.id) {
     return {
       statusCode: 200,
-      headers:    { 'Access-Control-Allow-Origin': '*' },
-      body:       JSON.stringify({ id: response.result.id })
+      body: JSON.stringify({ id: orderData.id })
     };
-  } catch (err) {
-    console.error(err);
+  } else {
     return {
       statusCode: 500,
-      headers:    { 'Access-Control-Allow-Origin': '*' },
-      body:        err.toString()
+      body: JSON.stringify(orderData)
     };
   }
 };
