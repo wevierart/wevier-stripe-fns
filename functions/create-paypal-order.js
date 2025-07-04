@@ -1,71 +1,85 @@
 // functions/create-paypal-order.js
+
 const paypal = require('@paypal/checkout-server-sdk')
 
-// Choose sandbox or live based on your env
-function environment() {
-  const clientId = process.env.PAYPAL_CLIENT_ID
-  const clientSecret = process.env.PAYPAL_CLIENT_SECRET
-  return new paypal.core.SandboxEnvironment(clientId, clientSecret)
+// Pull your credentials from Netlify environment
+const clientId     = process.env.PAYPAL_CLIENT_ID
+const clientSecret = process.env.PAYPAL_CLIENT_SECRET
+if (!clientId || !clientSecret) {
+  console.error('Missing PAYPAL_CLIENT_ID or PAYPAL_CLIENT_SECRET')
 }
 
-function client() {
-  return new paypal.core.PayPalHttpClient(environment())
-}
+// Build PayPal SDK client
+const env    = new paypal.core.SandboxEnvironment(clientId, clientSecret)
+const client = new paypal.core.PayPalHttpClient(env)
 
 exports.handler = async (event) => {
-  // Only allow POST requests
+  // 1) CORS preflight
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 204,
+      headers: {
+        'Access-Control-Allow-Origin':  '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
+    }
+  }
+
+  // 2) Only POST
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
-      body: 'Method Not Allowed'
+      headers: { Allow: 'POST, OPTIONS' },
+      body: 'Method Not Allowed',
     }
   }
 
-  let body
+  // 3) Parse JSON body
+  let data
   try {
-    body = JSON.parse(event.body)
+    data = JSON.parse(event.body)
   } catch (err) {
-    return {
-      statusCode: 400,
-      body: 'Invalid JSON'
-    }
+    return { statusCode: 400, body: 'Invalid JSON' }
   }
 
-  const { items, email, subtotal } = body
+  const { subtotal } = data
+  if (!subtotal) {
+    return { statusCode: 400, body: 'Missing subtotal' }
+  }
 
-  // Build the PayPal order
+  // 4) Build the order
   const request = new paypal.orders.OrdersCreateRequest()
   request.prefer('return=representation')
   request.requestBody({
     intent: 'CAPTURE',
-    purchase_units: [
-      {
-        amount: {
-          currency_code: 'EUR',
-          value: Number(subtotal).toFixed(2)
-        },
-        payee: {
-          email_address: email
-        }
+    purchase_units: [{
+      amount: {
+        currency_code: 'EUR',
+        value: parseFloat(subtotal).toFixed(2)
       }
-    ],
+    }],
     application_context: {
+      // these pages must exist in your Webflow site
       return_url: `${process.env.URL}/success`,
       cancel_url: `${process.env.URL}/cancel`
     }
   })
 
+  // 5) Call PayPal
   try {
-    const response = await client().execute(request)
+    const response = await client.execute(request)
     return {
       statusCode: 200,
+      headers: { 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({ id: response.result.id })
     }
   } catch (err) {
     console.error('PayPal create error', err)
     return {
       statusCode: err.statusCode || 500,
-      body: JSON.stringify({ message: err.message })
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({ error: err.message })
     }
   }
 }
