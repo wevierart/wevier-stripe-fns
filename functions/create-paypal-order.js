@@ -1,85 +1,120 @@
 // functions/create-paypal-order.js
 
-const paypal = require('@paypal/checkout-server-sdk')
+// If you want to use a local .env during dev uncomment next line
+// require('dotenv').config();
 
-// Pull your credentials from Netlify environment
-const clientId     = process.env.PAYPAL_CLIENT_ID
-const clientSecret = process.env.PAYPAL_CLIENT_SECRET
-if (!clientId || !clientSecret) {
-  console.error('Missing PAYPAL_CLIENT_ID or PAYPAL_CLIENT_SECRET')
-}
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',            // or your exact domain
+  'Access-Control-Allow-Methods': 'POST,OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type'
+};
 
-// Build PayPal SDK client
-const env    = new paypal.core.SandboxEnvironment(clientId, clientSecret)
-const client = new paypal.core.PayPalHttpClient(env)
-
-exports.handler = async (event) => {
+exports.handler = async (event, context) => {
   // 1) CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
-      statusCode: 204,
-      headers: {
-        'Access-Control-Allow-Origin':  '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-    }
+      statusCode: 200,
+      headers: CORS_HEADERS,
+      body: ''
+    };
   }
 
-  // 2) Only POST
+  // 2) Only POST is allowed for order creation
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
-      headers: { Allow: 'POST, OPTIONS' },
-      body: 'Method Not Allowed',
-    }
+      headers: { 
+        ...CORS_HEADERS,
+        Allow: 'OPTIONS, POST'
+      },
+      body: 'Method Not Allowed'
+    };
   }
 
-  // 3) Parse JSON body
-  let data
+  // 3) Parse the incoming order payload
+  let { total } = {};
   try {
-    data = JSON.parse(event.body)
+    const data = JSON.parse(event.body);
+    total = data.total;
+    if (!total) throw new Error('Missing `total` in request body');
   } catch (err) {
-    return { statusCode: 400, body: 'Invalid JSON' }
-  }
-
-  const { subtotal } = data
-  if (!subtotal) {
-    return { statusCode: 400, body: 'Missing subtotal' }
-  }
-
-  // 4) Build the order
-  const request = new paypal.orders.OrdersCreateRequest()
-  request.prefer('return=representation')
-  request.requestBody({
-    intent: 'CAPTURE',
-    purchase_units: [{
-      amount: {
-        currency_code: 'EUR',
-        value: parseFloat(subtotal).toFixed(2)
-      }
-    }],
-    application_context: {
-      // these pages must exist in your Webflow site
-      return_url: `${process.env.URL}/success`,
-      cancel_url: `${process.env.URL}/cancel`
-    }
-  })
-
-  // 5) Call PayPal
-  try {
-    const response = await client.execute(request)
     return {
-      statusCode: 200,
-      headers: { 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({ id: response.result.id })
-    }
-  } catch (err) {
-    console.error('PayPal create error', err)
-    return {
-      statusCode: err.statusCode || 500,
-      headers: { 'Access-Control-Allow-Origin': '*' },
+      statusCode: 400,
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: err.message })
-    }
+    };
   }
-}
+
+  // 4) Determine PayPal API base (sandbox vs production)
+  const env = process.env.PAYPAL_ENV === 'production' ? 'api-m.paypal.com' : 'api-m.sandbox.paypal.com';
+  const baseURL = `https://${env}`;
+
+  // 5) Fetch an OAuth token from PayPal
+  let accessToken;
+  try {
+    const creds = Buffer.from(
+      `${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`
+    ).toString('base64');
+
+    const authRes = await fetch(`${baseURL}/v1/oauth2/token`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${creds}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: 'grant_type=client_credentials'
+    });
+    const authJson = await authRes.json();
+    if (!authRes.ok) {
+      throw new Error(`Token error: ${JSON.stringify(authJson)}`);
+    }
+    accessToken = authJson.access_token;
+  } catch (err) {
+    console.error('PayPal token fetch failed:', err);
+    return {
+      statusCode: 502,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ error: 'Failed to fetch PayPal token' })
+    };
+  }
+
+  // 6) Create the order
+  let order;
+  try {
+    const orderRes = await fetch(`${baseURL}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        intent: 'CAPTURE',
+        purchase_units: [{
+          amount: {
+            currency_code: 'EUR',
+            value: total.toString()
+          }
+        }]
+      })
+    });
+    const orderJson = await orderRes.json();
+    if (!orderRes.ok) {
+      throw new Error(`Order creation failed: ${JSON.stringify(orderJson)}`);
+    }
+    order = orderJson;
+  } catch (err) {
+    console.error('PayPal order creation failed:', err);
+    return {
+      statusCode: 502,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ error: 'Failed to create PayPal order' })
+    };
+  }
+
+  // 7) Return the new order ID
+  return {
+    statusCode: 200,
+    headers: CORS_HEADERS,
+    body: JSON.stringify({ id: order.id })
+  };
+};
