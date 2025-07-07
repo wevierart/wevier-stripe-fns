@@ -84,7 +84,7 @@ exports.handler = async (event) => {
       line_items,
       mode:        'payment',
       success_url: 'https://www.wevierart.com/success?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url:  'https://www.wevierart.com/cancel',
+      cancel_url:  'https://wevierart.com/shop',
     });
 
     // 5) Return session.id
