@@ -78,7 +78,7 @@ exports.handler = async (event) => {
           'AT','BE','BG','HR','CY','CZ','DK','EE',
           'FI','FR','DE','GR','HU','IE','IT','LV',
           'LT','LU','MT','NL','PL','PT','RO','SK',
-          'SI','ES','SE'
+          'SI','ES','SE','AE','SA'
         ]
       },
       line_items,
